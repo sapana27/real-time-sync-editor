@@ -6,9 +6,7 @@ Multiple users can join the same session and edit code together live — changes
 
 ## Demo
 
-https://github.com/user-attachments/assets/demo.mp4
-
-*(If the video doesn't render inline, see [`docs/demo.mp4`](./docs/demo.mp4))*
+![Demo](./docs/demo.gif)
 
 ## Features
 
