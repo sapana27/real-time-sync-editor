@@ -1,8 +1,8 @@
 # Real-Time Sync Editor
 
-A collaborative, real-time code editor built with React and Monaco, powered by Yjs for conflict-free syncing and deployed on AWS via Docker, ECR, and ECS Fargate.
+A collaborative, real-time code editor where multiple users can join the same session and edit code together live — changes merge instantly across every browser, with a live list of who's online.
 
-Multiple users can join the same session and edit code together live — changes merge instantly across every connected browser, with a live list of who's currently online.
+Real-time sync isn't trivial: this project solves conflict-free merging with Yjs CRDTs, and pairs it with a fully automated CI/CD pipeline (GitHub Actions → Docker → ECR → ECS Fargate) so every push to `main` builds, tests, and redeploys the app on its own.
 
 ## Demo
 
@@ -41,6 +41,7 @@ Two (or more) browser clients connect to a shared Express backend over WebSocket
 - Docker
 - Amazon ECR (image registry)
 - Amazon ECS on AWS Fargate (container hosting)
+- GitHub Actions (CI/CD)
 
 ## Deployment
 
@@ -56,7 +57,30 @@ The backend is containerized with Docker, pushed to Amazon ECR, and deployed as 
 
 ![ECS service](./docs/screenshot-ecs.png)
 
-> Note: the AWS deployment shown above was spun up to validate and demo the pipeline, then torn down afterward to avoid ongoing infrastructure costs. The Docker image remains available in ECR.
+## CI/CD Pipeline
+
+Every push to `main` triggers a fully automated pipeline via GitHub Actions — no manual build, push, or deploy steps required.
+
+**Pipeline stages:**
+1. **build-and-lint** — installs frontend and backend dependencies, runs ESLint against the frontend
+2. **build-and-push** — builds the Docker image, tags it with the commit SHA and `latest`, pushes both to Amazon ECR
+3. **deploy** — fetches the current ECS task definition, renders it with the new image, and deploys it to the ECS Fargate service, waiting until the new task is stable
+
+AWS authentication uses GitHub's OIDC provider, so no long-lived AWS access keys are stored as GitHub secrets.
+
+![GitHub Actions pipeline run](./docs/github-actions-run.png)
+
+**ECS automatically redeploying the new task after a push:**
+
+![ECS deployment](./docs/ecs-deployment.png)
+
+**Live app reflecting the change right after deploy:**
+
+![Live app deployed via CI/CD](./docs/live-app-cicd.png)
+
+Workflow file: [`.github/workflows/ci-cd.yml`](./.github/workflows/ci-cd.yml)
+
+> Note: the AWS deployment shown above was spun up to demonstrate this pipeline working end-to-end, then torn down afterward to avoid ongoing infrastructure costs. The Docker image remains available in ECR, and the pipeline fully reproduces the deployment automatically on the next push to `main`.
 
 ## Local Setup
 
