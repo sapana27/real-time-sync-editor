@@ -82,6 +82,29 @@ Workflow file: [`.github/workflows/ci-cd.yml`](./.github/workflows/ci-cd.yml)
 
 > Note: the AWS deployment shown above was spun up to demonstrate this pipeline working end-to-end, then torn down afterward to avoid ongoing infrastructure costs. The Docker image remains available in ECR, and the pipeline fully reproduces the deployment automatically on the next push to `main`.
 
+## Security Scanning
+
+The project is scanned locally with [Trivy](https://trivy.dev) — for known vulnerabilities in dependencies (`trivy fs`) and misconfigurations in the Dockerfile (`trivy config`).
+
+**Dependency scan (`trivy fs .`):**
+
+Two real vulnerabilities were found and fixed:
+
+| Package | CVE | Severity | Issue | Fix | Commit |
+|---|---|---|---|---|---|
+| `nanoid` | CVE-2026-67213 | HIGH | Denial-of-service via infinite loop in `customRandom` | `3.3.16` → `3.3.18` | [`6b3506f`](https://github.com/sapana27/real-time-sync-editor/commit/6b3506f) |
+| `postcss` | CVE-2026-69153 | MEDIUM | Information disclosure via crafted `sourceMappingURL` | `8.5.22` → `8.5.26` | [`f7cb305`](https://github.com/sapana27/real-time-sync-editor/commit/f7cb305) |
+
+Both were transitive dependencies pulled in through Vite (`vite → postcss → nanoid`). A clean re-scan afterward confirms `0` vulnerabilities across both `Backend` and `Frontend`:
+
+![Clean Trivy scan](./docs/trivy-scan-clean.png)
+
+**Dockerfile scan (`trivy config`):**
+
+Two informational findings were reviewed:
+- **No `USER` instruction (DS-0002, HIGH)** — the container runs as root. Assessed as low risk for this specific app (no runtime file writes, no privileged ports involved), so left as a documented follow-up rather than an urgent fix.
+- **No `HEALTHCHECK` instruction (DS-0026, LOW)** — noted as a possible future improvement.
+
 ## Local Setup
 
 ```bash
