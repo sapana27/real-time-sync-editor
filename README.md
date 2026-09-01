@@ -39,6 +39,7 @@ Two (or more) browser clients connect to a shared Express backend over WebSocket
 
 **Deployment**
 - Docker
+- Terraform — Infrastructure as Code (VPC, ECS, IAM/OIDC)
 - Amazon ECR (image registry)
 - Amazon ECS on AWS Fargate (container hosting)
 - GitHub Actions (CI/CD)
@@ -56,6 +57,31 @@ The backend is containerized with Docker, pushed to Amazon ECR, and deployed as 
 **ECS — service running live:**
 
 ![ECS service](./docs/screenshot-ecs.png)
+
+## Infrastructure as Code
+
+All AWS infrastructure — VPC, subnet, security group, ECS cluster/service/task definition, and the IAM roles (including GitHub's OIDC federation) — is defined in Terraform under [`/terraform`](./terraform), rather than created by hand in the AWS console.
+
+The reason: this project gets torn down between demos to avoid ongoing AWS costs, and rebuilt when needed. Terraform makes that reliable — `terraform apply` recreates the exact same stack every time, instead of re-clicking through console steps from memory.
+
+| File | Provisions |
+|---|---|
+| `network.tf` | VPC, public subnet, internet gateway, route table, security group |
+| `iam.tf` | GitHub OIDC provider, GitHub Actions IAM role (trust policy scoped to this repo), ECS task execution role |
+| `ecs.tf` | ECS cluster, task definition, service (Fargate) |
+| `ecr.tf` | Reads the existing ECR repository (see note below) |
+| `outputs.tf` | Resource identifiers needed for the GitHub Actions secrets |
+
+**Deliberately not managed by Terraform:** the ECR repository itself. It's read via a Terraform `data` source rather than created as a `resource`, so `terraform destroy` never deletes previously pushed images — only the compute and networking around them.
+
+```bash
+cd terraform
+terraform init
+terraform apply    # deploy
+terraform destroy  # tear down
+```
+
+Requires an AWS CLI profile configured locally, and the variables in `variables.tf` set for your own account, region, and repo.
 
 ## CI/CD Pipeline
 
@@ -80,7 +106,14 @@ AWS authentication uses GitHub's OIDC provider, so no long-lived AWS access keys
 
 Workflow file: [`.github/workflows/ci-cd.yml`](./.github/workflows/ci-cd.yml)
 
-> Note: the AWS deployment shown above was spun up to demonstrate this pipeline working end-to-end, then torn down afterward to avoid ongoing infrastructure costs. The Docker image remains available in ECR, and the pipeline fully reproduces the deployment automatically on the next push to `main`.
+> Note: the AWS deployment shown above is spun up on demand via Terraform (see [Infrastructure as Code](#infrastructure-as-code)) and torn down between demos to avoid ongoing costs. The Docker image stays in ECR regardless, and both the infrastructure and the running app are fully reproducible — `terraform apply` rebuilds the AWS resources, and the next push to `main` redeploys the app onto them.
+
+## Notes & Troubleshooting
+
+A few real issues hit while building this pipeline, and how they were diagnosed:
+
+- **IAM trust policy vs. GitHub's OIDC token format** — the trust policy's `sub` condition used the classic `repo:OWNER/REPO:*` pattern (still the standard example in most tutorials), but GitHub's actual token for this repo used the newer [immutable subject claims](https://github.blog/changelog/2026-04-23-immutable-subject-claims-for-github-actions-oidc-tokens/) format, embedding numeric owner/repo IDs. Diagnosed via AWS CloudTrail — the denied `AssumeRoleWithWebIdentity` event showed the real `sub` claim GitHub sent — then updated `iam.tf` to match.
+- **ECS task failing to start** — the execution role lacked `logs:CreateLogGroup`, needed because the task definition auto-creates its CloudWatch log group on first run (`awslogs-create-group: true`). The AWS-managed execution policy covers writing logs, not creating the log group itself.
 
 ## Security Scanning
 
